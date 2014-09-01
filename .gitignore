@@ -1,0 +1,5 @@
+login.txt
+poll-subreddits.txt
+tallies*.dat
+*.pyc
+output.txt.gz
