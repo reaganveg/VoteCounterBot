@@ -4,11 +4,17 @@ from string import *
 
 def identity(x): return x
 
-def draw_markdown_table(headers, *columns):
-	print(' | '.join(headers))
-	print(' | '.join(map((lambda x: '---'), headers)))
+def markdown_table(*columns, **k):
+	header = k['header']
+	footers = k['footers']
+	result = []
+	result.append(' | '.join(header))
+	result.append(' | '.join(map((lambda x: '---'), header)))
 	for row in izip_longest(*columns, fillvalue=' '):
-		print(' | '.join(row))
+		result.append(' | '.join(row))
+	for footer in footers:
+		result.append(' | '.join(footer))
+	return "\n".join(result) + "\n"
 
 def extract_vote_value(comment_text):
 	match = re.search('^\W*(support|oppose)(?:[.!]|\W*$)', comment_text, re.I|re.M)
@@ -77,7 +83,15 @@ def filter_duplicate_votes(votes):
 	voted = {}
 	return filter((lambda v: not_duplicate(voted, v[1])), votes)
 
-def draw_vote_table(proposal, comments, excluded_authors):
+def percent(over, under):
+	if under:
+		return 100.0 * over / (over + under)
+	elif over:
+		return 100
+	else:
+		return None
+
+def vote_table(proposal, comments, excluded_authors):
 
 	proposer_vote = proposal_to_vote(proposal)
 	reltime = int(proposer_vote[3])
@@ -88,6 +102,14 @@ def draw_vote_table(proposal, comments, excluded_authors):
 	votes = reversed(filter_duplicate_votes(sorted(votes, key=lambda v: -v[3])))
 	(supports, opposes) = partition((lambda x: x[0] == 'support'), votes)
 
-	draw_markdown_table(["Support","Time","Oppose","Time"],
+	head = ["Support","Time","Oppose","Time"]
+	foot = [["**Totals**",""], ["%d" % len(supports), "", "%d" % len(opposes), ""]]
+
+	p = percent(len(supports), len(opposes))
+	if p is not None:
+		foot.append(["**%.2f%% support**" % p, ""])
+
+	return markdown_table(
 		map(vote_to_voter, supports), map(lambda v: vote_to_time(reltime, v), supports),
-		map(vote_to_voter, opposes ), map(lambda v: vote_to_time(reltime, v), opposes ))
+		map(vote_to_voter, opposes ), map(lambda v: vote_to_time(reltime, v), opposes ),
+		header=head, footers=foot)

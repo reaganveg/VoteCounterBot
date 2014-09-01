@@ -41,4 +41,4 @@ for x in range(len(proposal_submits)): # iterates through proposal submissions
 	prop_create_time = proposal_submits[x].created
 	supports.append([proposal_submits[x].author, proposal_submits[x].permalink, 18000]) #Gets to 
 	
-	draw_vote_table(proposal_submits[x], forest_comments, [])
+	print vote_table(proposal_submits[x], forest_comments, [])
