@@ -1,6 +1,13 @@
-import re
 from itertools import *
-from string import *
+import os
+import pickle
+import re
+import string
+import time
+
+NOW = time.time()
+MAX_SUBMISSIONS = 50 # submissions to check for proposals
+MAX_PROPOSAL_AGE = 14 # days
 
 def identity(x): return x
 
@@ -41,10 +48,10 @@ def comment_to_vote(comment):
 		vote_time = comment.edited
 	else:
 		vote_time = comment.created
-	return (vote, comment.author, comment.permalink, vote_time)
+	return (vote, str(comment.author), str(comment.permalink), int(vote_time))
 
 def proposal_to_vote(proposal):
-	return ('support', proposal.author, proposal.permalink, proposal.created)
+	return ('support', str(proposal.author), str(proposal.permalink), int(proposal.created))
 
 def vote_to_voter(vote):
 	(author, link) = (vote[1], vote[2])
@@ -60,19 +67,17 @@ def pluralize(n):
 		return "s"
 
 def format_time_interval(t):
-	if t < 60:
-		return "%d second%s" % (t, pluralize(t))
-	elif t < 60 * 60:
-		t = t / 60
-		return "%d minute%s" % (t, pluralize(t))
-	elif t < 60 * 60 * 24:
-		t = t / (60 * 60)
-		return "%d hour%s" % (t, pluralize(t))
+	mins, secs = divmod(t, 60)
+	hours, mins = divmod(mins, 60)
+	days, hours = divmod(hours, 24)
+	if days:
+		return "%d day%s, %dh%02dm%02ds" % (days, pluralize(days), hours, mins, secs)
+	elif hours:
+		return "%d hour%s" % (hours, pluralize(hours))
+	elif mins:
+		return "%d minute%s" % (mins, pluralize(mins))
 	else:
-		mins, secs = divmod(t, 60)
-		hours, mins = divmod(mins, 60)
-		days, hours = divmod(hours, 24)
-		return "%d day%s, %02dh%02dm%02ds" % (days, pluralize(days), hours, mins, secs)
+		return "%d second%s" % (secs, pluralize(secs))
 
 def not_duplicate(seen, it):
 	r = not it in seen
@@ -84,14 +89,12 @@ def filter_duplicate_votes(votes):
 	return filter((lambda v: not_duplicate(voted, v[1])), votes)
 
 def percent(over, under):
-	if under:
+	if over + under:
 		return 100.0 * over / (over + under)
-	elif over:
-		return 100
 	else:
 		return None
 
-def vote_table(proposal, comments, excluded_authors):
+def tally_vote(proposal, comments):
 
 	proposer_vote = proposal_to_vote(proposal)
 	reltime = int(proposer_vote[3])
@@ -102,6 +105,9 @@ def vote_table(proposal, comments, excluded_authors):
 	votes = reversed(filter_duplicate_votes(sorted(votes, key=lambda v: -v[3])))
 	(supports, opposes) = partition((lambda x: x[0] == 'support'), votes)
 
+	return (proposal.permalink, proposal.title, supports, opposes, reltime)
+
+def vote_table(supports, opposes, reltime):
 	head = ["Support","Time","Oppose","Time"]
 	foot = [["**Totals**",""], ["%d" % len(supports), "", "%d" % len(opposes), ""]]
 
@@ -113,3 +119,62 @@ def vote_table(proposal, comments, excluded_authors):
 		map(vote_to_voter, supports), map(lambda v: vote_to_time(reltime, v), supports),
 		map(vote_to_voter, opposes ), map(lambda v: vote_to_time(reltime, v), opposes ),
 		header=head, footers=foot)
+
+def cached(callback, filename, seconds):
+	if os.path.isfile(filename) and time.time() < os.path.getmtime(filename) + seconds:
+		with open(filename) as f:
+			return pickle.load(f)
+	result = callback()
+	tempfile = filename + ".new"
+	with open(tempfile, 'wb') as f:
+		pickle.dump(result, f)
+	os.rename(tempfile, filename)
+	return result
+
+def readlines(filename): return [line.strip() for line in open(filename)]
+
+def is_proposal(submission):
+	return "proposal" in submission.title.lower()
+
+def markdown_link(text, url):
+	text = text.replace("]", "\\]") # TODO: do this correctly
+	return "[%s](%s)" % (text, url)
+
+def markdown_tally(tally):
+	(permalink, title, supports, opposes, reltime) = tally
+
+	markdown_title = markdown_link(title, permalink)
+	sections = [markdown_title]
+	voters = len(supports) + len(opposes)
+
+	if voters: # with the current tally method, this will always be true
+		sections.append(vote_table(supports, opposes, reltime))
+	else:
+		sections.append("(No votes yet.)")
+	return "\n\n---\n\n".join(sections)
+
+def too_old_to_tally(submission):
+	t = submission.created
+	return NOW - t > MAX_PROPOSAL_AGE * 24 * 60 * 60
+
+def submit_or_update_submission(r, username, subreddit_name, title, body):
+	subreddit = r.get_subreddit(subreddit_name)
+	for submission in subreddit.get_new(limit=MAX_SUBMISSIONS):
+		if str(submission.author) == username and str(submission.title) == title:
+			submission.edit(body)
+			return
+	r.submit(subreddit, title, text=body)
+
+def collect_tallies(r, subreddit_name):
+	subreddit = r.get_subreddit(subreddit_name)
+	print "Collecting tallies..."
+	tallies = []
+	for submission in subreddit.get_new(limit=MAX_SUBMISSIONS):
+		if not is_proposal(submission):
+			continue
+		if too_old_to_tally(submission):
+			break
+		submission.replace_more_comments(limit=None, threshold=0)
+		forest_comments = submission.comments
+		tallies.append(tally_vote(submission, forest_comments))
+	return tallies
