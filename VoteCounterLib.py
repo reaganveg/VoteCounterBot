@@ -48,7 +48,7 @@ def proposal_to_vote(proposal):
 
 def vote_to_voter(vote):
 	(author, link) = (vote[1], vote[2])
-	return format("/u/%s [^ref](%s)" % (author, link))
+	return "/u/%s [^ref](%s)" % (author, link)
 
 def vote_to_time(reltime, vote):
 	return format_time_interval(int(vote[3]) - reltime)
@@ -61,18 +61,18 @@ def pluralize(n):
 
 def format_time_interval(t):
 	if t < 60:
-		return format("%d second%s" % (t, pluralize(t)))
+		return "%d second%s" % (t, pluralize(t))
 	elif t < 60 * 60:
 		t = t / 60
-		return format("%d minute%s" % (t, pluralize(t)))
+		return "%d minute%s" % (t, pluralize(t))
 	elif t < 60 * 60 * 24:
 		t = t / (60 * 60)
-		return format("%d hour%s" % (t, pluralize(t)))
+		return "%d hour%s" % (t, pluralize(t))
 	else:
 		mins, secs = divmod(t, 60)
 		hours, mins = divmod(mins, 60)
 		days, hours = divmod(hours, 24)
-		return format("%d day%s, %02dh%02dm%02ds" % (days, pluralize(days), hours, mins, secs))
+		return "%d day%s, %02dh%02dm%02ds" % (days, pluralize(days), hours, mins, secs)
 
 def not_duplicate(seen, it):
 	r = not it in seen
