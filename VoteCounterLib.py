@@ -134,7 +134,7 @@ def cached(callback, filename, seconds):
 def readlines(filename): return [line.strip() for line in open(filename)]
 
 def is_proposal(submission):
-	return "proposal" in submission.title.lower()
+	return re.search('^proposal|^ban ', submission.title, re.I)
 
 def markdown_link(text, url):
 	text = text.replace("]", "\\]") # TODO: do this correctly
